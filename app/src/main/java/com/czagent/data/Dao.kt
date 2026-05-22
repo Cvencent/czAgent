@@ -24,6 +24,24 @@ interface TaskDao {
 
     @Query("DELETE FROM task_steps WHERE taskId = :taskId")
     suspend fun deleteStepsForTask(taskId: Long)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun replaceShortcut(shortcut: ShortcutEntity)
+
+    @Query("DELETE FROM shortcuts WHERE taskId = :taskId")
+    suspend fun deleteShortcutForTask(taskId: Long)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun replaceSchedule(schedule: TaskScheduleEntity)
+
+    @Query("DELETE FROM task_schedules WHERE taskId = :taskId")
+    suspend fun deleteScheduleForTask(taskId: Long)
+
+    @Query("SELECT * FROM shortcuts ORDER BY sortOrder ASC")
+    suspend fun listShortcuts(): List<ShortcutEntity>
+
+    @Query("SELECT * FROM task_schedules WHERE enabled = 1")
+    suspend fun listSchedules(): List<TaskScheduleEntity>
 }
 
 @Dao

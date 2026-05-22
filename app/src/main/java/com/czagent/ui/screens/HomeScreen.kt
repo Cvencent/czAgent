@@ -19,6 +19,15 @@ fun HomeScreen(appState: AppState, modifier: Modifier = Modifier) {
     Column(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Mobile Agent", style = androidx.compose.material3.MaterialTheme.typography.headlineMedium)
         Text("Rule-based local automation foundation")
+        if (appState.shortcuts.isNotEmpty()) {
+            Text("Shortcuts", style = androidx.compose.material3.MaterialTheme.typography.titleMedium)
+            appState.shortcuts.forEach { shortcut ->
+                Button(onClick = { appState.runShortcut(shortcut) }) {
+                    Text(shortcut.label)
+                }
+            }
+            Text("Tasks", style = androidx.compose.material3.MaterialTheme.typography.titleMedium)
+        }
         appState.tasks.forEach { task ->
             Card(Modifier.fillMaxWidth()) {
                 Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween) {

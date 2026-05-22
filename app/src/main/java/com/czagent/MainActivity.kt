@@ -8,6 +8,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.room.Room
 import com.czagent.android.automation.AndroidActionExecutor
 import com.czagent.android.observation.AndroidScreenObserver
+import com.czagent.android.scheduler.TaskScheduler
 import com.czagent.core.engine.ActionExecutor
 import com.czagent.core.engine.ScreenObserver
 import com.czagent.data.AppDatabase
@@ -24,11 +25,13 @@ class MainActivity : ComponentActivity() {
             AppDatabase::class.java,
             "czagent.db",
         ).build()
+        val taskRepository = TaskRepository(database.taskDao())
         val factory = AppStateFactory(
-            taskRepository = TaskRepository(database.taskDao()),
+            taskRepository = taskRepository,
             runDao = database.runDao(),
             screenObserver = AndroidScreenObserver(),
             actionExecutor = AndroidActionExecutor(applicationContext),
+            taskScheduler = TaskScheduler(applicationContext, taskRepository),
         )
         setContent {
             MobileAgentApp(factory)
@@ -41,11 +44,12 @@ class AppStateFactory(
     private val runDao: RunDao,
     private val screenObserver: ScreenObserver,
     private val actionExecutor: ActionExecutor,
+    private val taskScheduler: TaskScheduler,
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(AppState::class.java)) {
-            return AppState(taskRepository, runDao, screenObserver, actionExecutor) as T
+            return AppState(taskRepository, runDao, screenObserver, actionExecutor, taskScheduler) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
     }

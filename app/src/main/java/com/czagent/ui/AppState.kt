@@ -20,8 +20,11 @@ import com.czagent.core.model.StepType
 import com.czagent.core.model.TaskStep
 import com.czagent.core.safety.SafetyGuard
 import com.czagent.core.vision.RuleBasedVisionAnalyzer
+import com.czagent.android.scheduler.TaskScheduler
 import com.czagent.data.RoomRunLogger
 import com.czagent.data.RunDao
+import com.czagent.data.SaveTaskOptions
+import com.czagent.data.ShortcutEntity
 import com.czagent.data.StepLogEntity
 import com.czagent.data.TaskRepository
 import com.czagent.data.TaskRunEntity
@@ -34,8 +37,10 @@ class AppState(
     private val runDao: RunDao? = null,
     private val screenObserver: ScreenObserver = EmptyScreenObserver,
     private val actionExecutor: ActionExecutor = NoOpActionExecutor,
+    private val taskScheduler: TaskScheduler? = null,
 ) : ViewModel() {
     val tasks = mutableStateListOf<AutomationTask>()
+    val shortcuts = mutableStateListOf<ShortcutCommand>()
     val logs = mutableStateListOf<StepLog>()
     val runs = mutableStateListOf<RunSummary>()
 
@@ -46,7 +51,10 @@ class AppState(
     var taskDescription by mutableStateOf("")
     var targetPackage by mutableStateOf("")
     var firstClickText by mutableStateOf("")
+    var shortcutEnabled by mutableStateOf(false)
+    var shortcutLabel by mutableStateOf("")
     var dailyScheduleEnabled by mutableStateOf(false)
+    var dailyScheduleTime by mutableStateOf("08:30")
 
     fun load() {
         val repository = taskRepository ?: return
@@ -55,6 +63,9 @@ class AppState(
             tasks.clear()
             tasks.addAll(loadedTasks)
             val namesById = loadedTasks.associate { it.id to it.name }
+            val loadedShortcuts = withContext(Dispatchers.IO) { repository.listShortcuts() }
+            shortcuts.clear()
+            shortcuts.addAll(loadedShortcuts.map { it.toCommand(loadedTasks) })
             val loadedRuns = withContext(Dispatchers.IO) { runDao?.recentRuns() ?: emptyList() }
             runs.clear()
             runs.addAll(
@@ -92,9 +103,23 @@ class AppState(
         val repository = taskRepository
         if (repository == null) {
             tasks += task
+            if (shortcutEnabled) {
+                shortcuts += ShortcutCommand(0, shortcutLabel.ifBlank { task.name }, task.id, task.name)
+            }
         } else {
             viewModelScope.launch {
-                withContext(Dispatchers.IO) { repository.saveTask(task) }
+                withContext(Dispatchers.IO) {
+                    repository.saveTask(
+                        task,
+                        SaveTaskOptions(
+                            createShortcut = shortcutEnabled,
+                            shortcutLabel = shortcutLabel.ifBlank { task.name },
+                            dailyScheduleEnabled = dailyScheduleEnabled,
+                            dailyScheduleLocalTime = dailyScheduleTime,
+                        ),
+                    )
+                }
+                taskScheduler?.rescheduleAll()
                 load()
             }
         }
@@ -102,10 +127,18 @@ class AppState(
         taskDescription = ""
         targetPackage = ""
         firstClickText = ""
+        shortcutEnabled = false
+        shortcutLabel = ""
         dailyScheduleEnabled = false
+        dailyScheduleTime = "08:30"
     }
 
     fun markManualRun(task: AutomationTask) {
+        runTask(task)
+    }
+
+    fun runShortcut(command: ShortcutCommand) {
+        val task = tasks.firstOrNull { it.id == command.taskId } ?: return
         runTask(task)
     }
 
@@ -151,6 +184,13 @@ data class RunSummary(
     val failureReason: String?,
 )
 
+data class ShortcutCommand(
+    val id: Long,
+    val label: String,
+    val taskId: Long,
+    val taskName: String,
+)
+
 private object EmptyScreenObserver : ScreenObserver {
     override suspend fun observe(): ScreenSnapshot = ScreenSnapshot(null, null, emptyList())
 }
@@ -178,3 +218,13 @@ private fun StepLogEntity.toDomainLog(): StepLog = StepLog(
     message = message,
     timestampMillis = timestamp,
 )
+
+private fun ShortcutEntity.toCommand(tasks: List<AutomationTask>): ShortcutCommand {
+    val task = tasks.firstOrNull { it.id == taskId }
+    return ShortcutCommand(
+        id = id,
+        label = label,
+        taskId = taskId,
+        taskName = task?.name ?: "Task $taskId",
+    )
+}

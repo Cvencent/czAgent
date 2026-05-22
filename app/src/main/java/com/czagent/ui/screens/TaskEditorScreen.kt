@@ -24,8 +24,18 @@ fun TaskEditorScreen(appState: AppState, modifier: Modifier = Modifier) {
         OutlinedTextField(appState.targetPackage, { appState.targetPackage = it }, Modifier.fillMaxWidth(), label = { Text("Target package") })
         OutlinedTextField(appState.firstClickText, { appState.firstClickText = it }, Modifier.fillMaxWidth(), label = { Text("First click text") })
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("Shortcut command")
+            Switch(appState.shortcutEnabled, { appState.shortcutEnabled = it })
+        }
+        if (appState.shortcutEnabled) {
+            OutlinedTextField(appState.shortcutLabel, { appState.shortcutLabel = it }, Modifier.fillMaxWidth(), label = { Text("Shortcut label") })
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text("Daily schedule")
             Switch(appState.dailyScheduleEnabled, { appState.dailyScheduleEnabled = it })
+        }
+        if (appState.dailyScheduleEnabled) {
+            OutlinedTextField(appState.dailyScheduleTime, { appState.dailyScheduleTime = it }, Modifier.fillMaxWidth(), label = { Text("Daily time HH:mm") })
         }
         Button(onClick = { appState.saveDraftTask() }, enabled = appState.taskName.isNotBlank()) {
             Text("Save task")
