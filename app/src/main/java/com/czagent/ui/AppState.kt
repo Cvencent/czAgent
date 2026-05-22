@@ -20,12 +20,14 @@ import com.czagent.core.model.StepType
 import com.czagent.core.model.SwipeDirection
 import com.czagent.core.safety.SafetyGuard
 import com.czagent.core.vision.RuleBasedVisionAnalyzer
+import com.czagent.android.permissions.AndroidPermissionChecker
 import com.czagent.android.scheduler.TaskScheduler
 import com.czagent.data.RunDao
 import com.czagent.data.SaveTaskOptions
 import com.czagent.data.ShortcutEntity
 import com.czagent.data.StepLogEntity
 import com.czagent.data.TaskRepository
+import com.czagent.runner.TaskRunPreflight
 import com.czagent.runner.TaskRunner
 import com.czagent.ui.task.DraftStep
 import com.czagent.ui.task.TaskDraftBuilder
@@ -39,6 +41,7 @@ class AppState(
     private val screenObserver: ScreenObserver = EmptyScreenObserver,
     private val actionExecutor: ActionExecutor = NoOpActionExecutor,
     private val taskScheduler: TaskScheduler? = null,
+    private val permissionChecker: AndroidPermissionChecker? = null,
 ) : ViewModel() {
     val tasks = mutableStateListOf<AutomationTask>()
     val shortcuts = mutableStateListOf<ShortcutCommand>()
@@ -196,6 +199,7 @@ class AppState(
                     runDao = runDao,
                     screenObserver = screenObserver,
                     actionExecutor = actionExecutor,
+                    preflightCheck = { preflightCheck() },
                 )
                 withContext(Dispatchers.IO) { runner.runTask(task) }
             } else {
@@ -217,6 +221,15 @@ class AppState(
             val index = runs.indexOf(runSummary)
             if (index >= 0) runs[index] = runSummary.copy(status = status)
             load()
+        }
+    }
+
+    private fun preflightCheck(): TaskRunPreflight {
+        val checker = permissionChecker ?: return TaskRunPreflight.Passed
+        return if (checker.isAccessibilityServiceEnabled()) {
+            TaskRunPreflight.Passed
+        } else {
+            TaskRunPreflight.Failed("Accessibility service is not enabled")
         }
     }
 }

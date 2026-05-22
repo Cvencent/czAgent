@@ -8,6 +8,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.room.Room
 import com.czagent.android.automation.AndroidActionExecutor
 import com.czagent.android.observation.AndroidScreenObserver
+import com.czagent.android.permissions.AndroidPermissionChecker
 import com.czagent.android.scheduler.TaskScheduler
 import com.czagent.core.engine.ActionExecutor
 import com.czagent.core.engine.ScreenObserver
@@ -32,6 +33,7 @@ class MainActivity : ComponentActivity() {
             screenObserver = AndroidScreenObserver(),
             actionExecutor = AndroidActionExecutor(applicationContext),
             taskScheduler = TaskScheduler(applicationContext, taskRepository),
+            permissionChecker = AndroidPermissionChecker(applicationContext),
         )
         setContent {
             MobileAgentApp(factory)
@@ -45,11 +47,12 @@ class AppStateFactory(
     private val screenObserver: ScreenObserver,
     private val actionExecutor: ActionExecutor,
     private val taskScheduler: TaskScheduler,
+    private val permissionChecker: AndroidPermissionChecker,
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(AppState::class.java)) {
-            return AppState(taskRepository, runDao, screenObserver, actionExecutor, taskScheduler) as T
+            return AppState(taskRepository, runDao, screenObserver, actionExecutor, taskScheduler, permissionChecker) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
     }

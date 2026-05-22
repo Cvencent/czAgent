@@ -65,6 +65,42 @@ class TaskRunnerTest {
         assertEquals(null, runDao.createdRunId)
     }
 
+    @Test
+    fun `preflight failure records failed run without executing actions`() = runTest {
+        val runDao = FakeRunDao()
+        var executedActions = 0
+        val task = AutomationTask(
+            7,
+            "Needs accessibility",
+            "desc",
+            "com.example",
+            listOf(TaskStep(1, 0, StepType.CLICK_TEXT, selectorText = "Start")),
+        )
+        val runner = TaskRunner(
+            taskLookup = { task },
+            runDao = runDao,
+            screenObserver = object : ScreenObserver {
+                override suspend fun observe() = ScreenSnapshot(null, null, emptyList())
+            },
+            actionExecutor = object : ActionExecutor {
+                override suspend fun execute(action: AgentAction): ActionResult {
+                    executedActions += 1
+                    return ActionResult.Success
+                }
+            },
+            preflightCheck = { _ -> TaskRunPreflight.Failed("Accessibility service is not enabled") },
+            clock = { 1000 },
+        )
+
+        val result = runner.runTask(task)
+
+        assertEquals(RunStatus.FAILED, result)
+        assertEquals(0, executedActions)
+        assertEquals(RunStatus.FAILED.name, runDao.run.status)
+        assertEquals("Accessibility service is not enabled", runDao.run.failureReason)
+        assertEquals(1000L, runDao.run.endedAt)
+    }
+
     private class FakeRunDao : RunDao {
         var createdRunId: Long? = null
         var run = TaskRunEntity(1, taskId = -1, status = RunStatus.RUNNING.name, startedAt = 1, endedAt = null, failureReason = null)

@@ -6,8 +6,10 @@ import androidx.work.WorkerParameters
 import androidx.room.Room
 import com.czagent.android.automation.AndroidActionExecutor
 import com.czagent.android.observation.AndroidScreenObserver
+import com.czagent.android.permissions.AndroidPermissionChecker
 import com.czagent.data.AppDatabase
 import com.czagent.data.TaskRepository
+import com.czagent.runner.TaskRunPreflight
 import com.czagent.runner.TaskRunner
 
 class TaskRunWorker(
@@ -29,6 +31,13 @@ class TaskRunWorker(
             runDao = database.runDao(),
             screenObserver = AndroidScreenObserver(),
             actionExecutor = AndroidActionExecutor(applicationContext),
+            preflightCheck = {
+                if (AndroidPermissionChecker(applicationContext).isAccessibilityServiceEnabled()) {
+                    TaskRunPreflight.Passed
+                } else {
+                    TaskRunPreflight.Failed("Accessibility service is not enabled")
+                }
+            },
         )
         val scheduler = TaskScheduler(applicationContext, repository)
         val coordinator = ScheduledTaskCoordinator(
