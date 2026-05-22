@@ -1,0 +1,674 @@
+---
+  Android 手机 Agent 自动化签到软件 - 完整设计方案
+
+  一、项目概述
+
+  1.1 项目目标
+
+  开发一款基于本地多模态模型的 Android Agent 软件，能够：
+  - 自动完成各类 App 的签到任务
+  - 执行复杂的多步骤任务（非固定流程）
+  - 完全本地运行，保护用户隐私
+  - 适配小米14（骁龙8 Gen3）等高端设备
+
+  1.2 核心特性
+
+  - 视觉理解：通过多模态模型分析屏幕内容
+  - 自然语言任务描述：用户用自然语言描述任务，无需编程
+  - 自主决策：Agent 根据当前屏幕状态自主决定下一步操作
+  - 错误恢复：遇到异常情况自动重试或调整策略
+  - 任务记忆：记录成功路径，提高后续执行效率
+
+  ---
+  二、技术架构
+
+  2.1 整体架构图
+
+  ┌─────────────────────────────────────────────────────────┐
+  │                    用户界面层                              │
+  │  - 任务配置界面（自然语言输入）                              │
+  │  - 任务执行监控（实时截图展示）                              │
+  │  - 历史记录与统计                                          │
+  └─────────────────────────────────────────────────────────┘
+                              ↓
+  ┌─────────────────────────────────────────────────────────┐
+  │                   任务管理层                               │
+  │  - 任务解析器（NL → 结构化任务）                            │
+  │  - 任务调度器（定时执行、优先级管理）                         │
+  │  - 执行状态机（跟踪任务进度）                                │
+  └─────────────────────────────────────────────────────────┘
+                              ↓
+  ┌─────────────────────────────────────────────────────────┐
+  │                   Agent 核心层                             │
+  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐      │
+  │  │ Manager     │  │ Worker      │  │ Reflector   │      │
+  │  │ (规划器)     │  │ (执行器)     │  │ (反思器)     │      │
+  │  │ 分解任务     │  │ 选择动作     │  │ 验证结果     │      │
+  │  │ 调整计划     │  │ 执行操作     │  │ 错误恢复     │      │
+  │  └─────────────┘  └─────────────┘  └─────────────┘      │
+  │                            ↓                              │
+  │  ┌─────────────────────────────────────────────┐         │
+  │  │          记忆系统（Memory System）            │         │
+  │  │  - 任务记忆（成功路径）                        │         │
+  │  │  - 子任务库（可复用流程）                      │         │
+  │  │  - 状态图（FSM：屏幕→动作→屏幕）               │         │
+  │  └─────────────────────────────────────────────┘         │
+  └─────────────────────────────────────────────────────────┘
+                              ↓
+  ┌─────────────────────────────────────────────────────────┐
+  │                   视觉理解层                               │
+  │  - 屏幕截图采集（MediaProjection）                         │
+  │  - 多模态模型推理（MiniCPM-V 2.6）                         │
+  │  - UI 元素识别与定位                                       │
+  │  - 屏幕状态分析（前后对比）                                 │
+  └─────────────────────────────────────────────────────────┘
+                              ↓
+  ┌─────────────────────────────────────────────────────────┐
+  │                   操作执行层                               │
+  │  - AccessibilityService（点击、滑动、输入）                │
+  │  - 手势模拟（复杂操作）                                     │
+  │  - 应用状态监控（当前 App、Activity）                       │
+  └─────────────────────────────────────────────────────────┘
+
+  2.2 核心组件详解
+
+  2.2.1 多模态模型（视觉理解）
+
+  选型：MiniCPM-V 2.6 (2B 参数)
+
+  理由：
+  - 参数量小（2B），适合移动端
+  - 中文支持优秀
+  - OCR 能力强，适合识别 UI 文本
+  - 官方支持 Android 部署
+
+  部署方案：
+  - 框架：llama.cpp（支持 NPU 加速）
+  - 量化：Q4_K_M（INT4，模型大小 ~2GB）
+  - 加速：Hexagon NPU（骁龙8 Gen3）
+  - 性能：2-3秒/截图，内存占用 3.5-4.5GB
+
+  推理流程：
+  截图（1080×2400）
+      ↓
+  预处理（归一化、缩放）
+      ↓
+  视觉编码器（1.3秒，NPU加速）
+      ↓
+  语言模型推理（1.3 tokens/s）
+      ↓
+  输出 JSON（UI元素 + 建议动作）
+
+  Prompt 设计：
+  系统提示：
+  你是一个手机操作助手，负责分析屏幕并决定下一步操作。
+
+  用户任务：{task_description}
+  当前步骤：{current_step}
+  历史操作：{action_history}
+
+  请分析当前屏幕并输出 JSON：
+  {
+    "screen_analysis": {
+      "screen_name": "当前页面名称",
+      "elements": [
+        {
+          "id": "元素唯一标识",
+          "type": "button|text_field|list_item|image",
+          "label": "元素文本内容",
+          "location": "top-left|center|bottom-right",
+          "bounds": {"x": 0, "y": 0, "width": 0, "height": 0}
+        }
+      ],
+      "state": "normal|loading|error|completed"
+    },
+    "next_action": {
+      "action_type": "click|scroll|type|wait|back|complete",
+      "target_element_id": "元素ID",
+      "parameters": {"text": "输入内容", "direction": "up|down"},
+      "reasoning": "为什么选择这个操作"
+    }
+  }
+
+  2.2.2 Agent 核心逻辑（多 Agent 协作）
+
+  架构：Manager-Worker-Reflector 三角色
+
+  Manager（规划器）：
+  - 职责：将用户任务分解为子目标序列
+  - 输入：用户任务描述 + 当前进度
+  - 输出：子目标列表（优先级排序）
+  - 触发：任务开始 / 遇到重大错误需要重新规划
+
+  Worker（执行器）：
+  - 职责：根据当前屏幕选择具体操作
+  - 输入：当前子目标 + 屏幕截图 + 历史操作
+  - 输出：下一步动作（JSON 格式）
+  - 触发：每次操作循环
+
+  Reflector（反思器）：
+  - 职责：验证操作结果，判断成功/失败
+  - 输入：操作前截图 + 操作后截图 + 预期结果
+  - 输出：SUCCESS | FAILURE | UNEXPECTED + 反馈信息
+  - 触发：每次操作后
+
+  执行循环：
+  while not task_complete and iteration < MAX_ITERATIONS:
+      # 1. 截图
+      screenshot = capture_screen()
+
+      # 2. Worker 决策
+      action = worker.decide_action(
+          screenshot=screenshot,
+          current_goal=manager.current_goal,
+          history=execution_history
+      )
+
+      # 3. 执行动作
+      execute_action(action)
+      wait(1.0)  # 等待 UI 更新
+
+      # 4. 截图对比
+      screenshot_after = capture_screen()
+
+      # 5. Reflector 验证
+      result = reflector.verify(
+          before=screenshot,
+          after=screenshot_after,
+          expected=action.expected_outcome
+      )
+
+      # 6. 记录历史
+      execution_history.append({
+          "action": action,
+          "result": result,
+          "timestamp": now()
+      })
+
+      # 7. 错误处理
+      if result == FAILURE:
+          consecutive_failures += 1
+          if consecutive_failures >= 3:
+              manager.replan()  # 重新规划
+      else:
+          consecutive_failures = 0
+
+      # 8. 检查完成
+      if result == SUCCESS and action.action_type == "complete":
+          task_complete = True
+
+      iteration += 1
+
+  2.2.3 记忆系统（提高效率）
+
+  三层记忆结构：
+
+  Level 1: 任务记忆（Task Memory）
+  - 存储：完整任务的成功执行路径
+  - 格式：{task_description: str, steps: List[Action], success_rate: float}
+  - 用途：相同任务直接复用路径
+
+  Level 2: 子任务库（Sub-task Library）
+  - 存储：可复用的操作序列（如"打开侧边栏"、"关闭广告"）
+  - 格式：{sub_task_name: str, trigger_condition: str, actions: List[Action]}
+  - 用途：跨任务复用常见操作
+
+  Level 3: 状态图（FSM - Finite State Machine）
+  - 存储：屏幕状态 + 可用动作 + 状态转移
+  - 格式：{screen_id: str, available_actions: List[Action], transitions: Dict[Action, screen_id]}
+  - 用途：理解 App 导航结构，快速定位目标页面
+
+  记忆检索流程：
+  当前任务 → 查询任务记忆
+      ↓ 未命中
+  查询子任务库（相似度匹配）
+      ↓ 未命中
+  查询状态图（当前屏幕 → 目标屏幕路径）
+      ↓ 未命中
+  Worker 自主探索（记录新路径）
+
+  2.2.4 AccessibilityService（操作执行）
+
+  核心功能实现：
+
+  1. 点击操作：
+  fun clickElement(elementId: String) {
+      val rootNode = getRootInActiveWindow() ?: return
+      val targetNode = findNodeById(rootNode, elementId)
+      targetNode?.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+      targetNode?.recycle()
+  }
+
+  2. 滑动操作：
+  fun scroll(direction: String) {
+      val action = when(direction) {
+          "up" -> AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
+          "down" -> AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
+          else -> return
+      }
+      getRootInActiveWindow()?.performAction(action)
+  }
+
+  3. 文本输入：
+  fun typeText(elementId: String, text: String) {
+      val node = findNodeById(getRootInActiveWindow(), elementId)
+      val arguments = Bundle().apply {
+          putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
+      }
+      node?.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
+      node?.recycle()
+  }
+
+  4. 获取当前 App：
+  override fun onAccessibilityEvent(event: AccessibilityEvent) {
+      val packageName = event.packageName?.toString()
+      val className = event.className?.toString()
+      currentApp = packageName
+      currentActivity = className
+  }
+
+  5. 截图（MediaProjection）：
+  val mediaProjection = mediaProjectionManager.getMediaProjection(resultCode, data)
+  val virtualDisplay = mediaProjection.createVirtualDisplay(
+      "ScreenCapture",
+      width, height, density,
+      DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+      imageReader.surface, null, null
+  )
+  val image = imageReader.acquireLatestImage()
+  val bitmap = imageToBitmap(image)
+
+  2.2.5 错误处理与恢复
+
+  错误分类：
+
+  1. 元素未找到（Element Not Found）
+  - 原因：UI 变化、加载延迟、识别错误
+  - 恢复：等待 2 秒重试 → 重新截图分析 → 调整元素定位策略
+
+  2. 操作无效（Action Failed）
+  - 原因：元素不可点击、权限不足
+  - 恢复：尝试替代操作（如手势模拟）→ 返回上一步 → 重新规划
+
+  3. 页面跳转异常（Unexpected Navigation）
+  - 原因：广告弹窗、网络错误页
+  - 恢复：识别当前页面类型 → 关闭弹窗/返回 → 继续原任务
+
+  4. 循环检测（Loop Detected）
+  - 原因：重复执行相同操作
+  - 恢复：检测最近 5 步操作 → 如果重复 3 次则中断 → Manager 重新规划
+
+  恢复策略优先级：
+  本地重试（3次）
+      ↓ 失败
+  子任务级恢复（返回上一步）
+      ↓ 失败
+  任务级重新规划（Manager 介入）
+      ↓ 失败
+  任务失败（通知用户）
+
+  ---
+  三、技术选型总结
+
+  ┌────────────┬──────────────────────┬────────────────────────────────┐
+  │    组件    │       技术选型       │              理由              │
+  ├────────────┼──────────────────────┼────────────────────────────────┤
+  │ 开发语言   │ Kotlin               │ Android 官方推荐，协程支持好   │
+  ├────────────┼──────────────────────┼────────────────────────────────┤
+  │ 多模态模型 │ MiniCPM-V 2.6 (2B)   │ 轻量、中文好、官方支持 Android │
+  ├────────────┼──────────────────────┼────────────────────────────────┤
+  │ 推理框架   │ llama.cpp            │ NPU 加速、GGUF 量化、LLM 专用  │
+  ├────────────┼──────────────────────┼────────────────────────────────┤
+  │ 量化方案   │ Q4_K_M (INT4)        │ 2GB 模型大小，98% 精度保留     │
+  ├────────────┼──────────────────────┼────────────────────────────────┤
+  │ UI 自动化  │ AccessibilityService │ 官方 API，权限可控             │
+  ├────────────┼──────────────────────┼────────────────────────────────┤
+  │ 截图方案   │ MediaProjection      │ 高质量截图，Android 5.0+       │
+  ├────────────┼──────────────────────┼────────────────────────────────┤
+  │ 任务调度   │ WorkManager          │ 可靠的后台任务调度             │
+  ├────────────┼──────────────────────┼────────────────────────────────┤
+  │ 数据存储   │ Room + SQLite        │ 记忆系统持久化                 │
+  ├────────────┼──────────────────────┼────────────────────────────────┤
+  │ 状态管理   │ Kotlin Flow          │ 响应式状态更新                 │
+  └────────────┴──────────────────────┴────────────────────────────────┘
+
+  ---
+  四、实现路线图
+
+  Phase 1: 基础框架（1-2 周）
+
+  目标：搭建项目骨架，验证核心技术可行性
+
+  任务清单：
+  1. 创建 Android 项目（Kotlin + Jetpack Compose）
+  2. 实现 AccessibilityService 基础功能
+    - 点击、滑动、文本输入
+    - 获取当前 App/Activity
+    - UI 树遍历与元素查找
+  3. 实现 MediaProjection 截图功能
+  4. 搭建简单的任务执行循环（无 AI）
+  5. 测试：手动编写操作序列，验证执行正确性
+
+  验证标准：
+  - 能够截图并保存
+  - 能够点击指定坐标/元素
+  - 能够检测当前 App
+
+  ---
+  Phase 2: 模型集成（2-3 周）
+
+  目标：集成多模态模型，实现屏幕理解
+
+  任务清单：
+  1. 下载 MiniCPM-V 2.6 模型
+  2. 转换为 GGUF 格式并量化到 Q4_K_M
+  3. 编译 llama.cpp for Android (ARM64)
+  4. 创建 JNI 封装（Kotlin 调用 C++）
+  5. 实现推理管道：
+    - 截图 → 预处理 → 模型推理 → JSON 解析
+  6. 设计 Prompt 模板（屏幕分析 + 动作决策）
+  7. 性能优化：
+    - 启用 NPU 加速（Hexagon）
+    - 实现 KV Cache 复用
+    - 内存池管理
+
+  验证标准：
+  - 模型能在小米14上运行
+  - 推理延迟 < 3 秒/截图
+  - 内存占用 < 5GB
+  - 能够正确识别常见 UI 元素（按钮、文本框）
+
+  ---
+  Phase 3: Agent 逻辑（3-4 周）
+
+  目标：实现 Manager-Worker-Reflector 架构
+
+  任务清单：
+  1. 实现 Manager（任务分解）
+    - 自然语言任务解析
+    - 子目标生成
+    - 重新规划逻辑
+  2. 实现 Worker（动作选择）
+    - 基于屏幕状态的决策
+    - 动作参数生成
+    - 与 AccessibilityService 集成
+  3. 实现 Reflector（结果验证）
+    - 截图对比（前后差异检测）
+    - 成功/失败判断
+    - 错误分类
+  4. 实现执行循环
+    - 迭代控制（最大 50 次）
+    - 循环检测
+    - 超时处理
+  5. 错误恢复机制
+    - 本地重试
+    - 子任务回退
+    - 任务重新规划
+
+  验证标准：
+  - 能够完成简单任务（如"打开设置"）
+  - 遇到错误能自动重试
+  - 检测到循环能中断
+
+  ---
+  Phase 4: 记忆系统（2-3 周）
+
+  目标：实现任务记忆，提高执行效率
+
+  任务清单：
+  1. 设计数据库 Schema（Room）
+    - 任务记忆表
+    - 子任务库表
+    - 状态图表
+  2. 实现记忆写入
+    - 成功任务自动保存
+    - 子任务提取
+    - 状态转移记录
+  3. 实现记忆检索
+    - 任务相似度匹配
+    - 子任务模糊搜索
+    - 状态图路径规划
+  4. 记忆复用逻辑
+    - 优先使用已知路径
+    - 参数槽位填充
+    - 失败时降级到探索模式
+
+  验证标准：
+  - 第二次执行相同任务速度提升 50%+
+  - 子任务能跨任务复用
+  - 记忆数据库大小可控（< 100MB）
+
+  ---
+  Phase 5: 用户界面（2 周）
+
+  目标：提供友好的用户交互界面
+
+  任务清单：
+  1. 任务配置界面
+    - 自然语言输入框
+    - 任务列表（增删改查）
+    - 定时设置（每日签到时间）
+  2. 执行监控界面
+    - 实时截图展示
+    - 当前步骤显示
+    - 日志输出
+  3. 历史记录界面
+    - 任务执行历史
+    - 成功率统计
+    - 失败原因分析
+  4. 设置界面
+    - 权限引导（AccessibilityService、MediaProjection）
+    - 模型配置（推理参数）
+    - 通知设置
+
+  验证标准：
+  - 用户能轻松添加任务
+  - 执行过程可视化
+  - 权限申请流程清晰
+
+  ---
+  Phase 6: 优化与测试（2-3 周）
+
+  目标：性能优化、稳定性提升、多 App 适配
+
+  任务清单：
+  1. 性能优化
+    - 推理速度优化（目标 < 2 秒）
+    - 内存优化（避免 OOM）
+    - 电池优化（降低功耗）
+  2. 稳定性测试
+    - 长时间运行测试（24 小时）
+    - 异常场景测试（网络断开、App 崩溃）
+    - 多设备测试（不同 Android 版本）
+  3. 多 App 适配
+    - 测试 10+ 常见 App（京东、淘宝、微博等）
+    - 记录特殊情况（广告、验证码）
+    - 优化 Prompt 提高泛化能力
+  4. 安全性
+    - 敏感信息保护（不记录密码）
+    - 权限最小化
+    - 防止误操作（二次确认）
+
+  验证标准：
+  - 单次签到任务成功率 > 80%
+  - 电池消耗 < 5% / 10 次任务
+  - 支持至少 10 个主流 App
+
+  ---
+  五、关键技术难点与解决方案
+
+  5.1 模型推理速度慢
+
+  问题：
+  - 初始推理可能需要 5-10 秒
+  - 影响用户体验
+
+  解决方案：
+  1. NPU 加速：启用 Hexagon 后端，视觉编码加速 2.8 倍
+  2. KV Cache 复用：缓存对话历史，减少重复计算
+  3. 分辨率优化：降低截图分辨率到 896×896（不影响识别）
+  4. 预热机制：App 启动时预加载模型
+
+  预期效果：
+  - 首次推理：3 秒
+  - 后续推理：2 秒
+
+  ---
+  5.2 UI 元素定位不准确
+
+  问题：
+  - 模型输出的坐标可能偏移
+  - 不同分辨率设备坐标不一致
+
+  解决方案：
+  1. 语义匹配优先：通过元素文本/类型匹配，而非坐标
+  2. AccessibilityService 辅助：用 UI 树验证元素存在性
+  3. 模糊匹配：允许一定范围内的坐标偏差
+  4. 多模态融合：结合视觉识别 + UI 树信息
+
+  实现：
+  fun findElement(label: String, type: String): AccessibilityNodeInfo? {
+      // 1. 先用 UI 树精确查找
+      val nodeByTree = findNodeByText(getRootInActiveWindow(), label)
+      if (nodeByTree != null) return nodeByTree
+
+      // 2. 降级到模糊匹配
+      val nodeByFuzzy = findNodeByFuzzyText(getRootInActiveWindow(), label, threshold=0.8)
+      if (nodeByFuzzy != null) return nodeByFuzzy
+
+      // 3. 最后使用坐标（模型输出）
+      return findNodeByBounds(bounds)
+  }
+
+  ---
+  5.3 不同 App 的 UI 差异大
+
+  问题：
+  - 每个 App 的签到入口不同
+  - 流程长度不一（1-10 步）
+
+  解决方案：
+  1. 自然语言任务描述：用户描述目标，而非步骤
+  2. 记忆系统：首次探索后记录路径，后续复用
+  3. 通用子任务库：识别常见模式（如"关闭广告"、"点击签到按钮"）
+  4. 自适应探索：Agent 自主尝试不同路径
+
+  示例：
+  用户输入："京东 App 签到"
+  Manager 分解：
+    1. 打开京东 App
+    2. 找到"我的"标签
+    3. 找到签到入口
+    4. 点击签到
+    5. 确认签到成功
+
+  Worker 执行：
+    - 每步根据当前屏幕动态调整
+    - 如果找不到"我的"，尝试其他入口
+    - 如果弹出广告，先关闭广告
+
+  ---
+  5.4 循环与卡死
+
+  问题：
+  - Agent 可能重复执行相同操作
+  - 找不到目标时无限尝试
+
+  解决方案：
+  1. 迭代上限：最多 50 次操作
+  2. 状态哈希：检测最近 5 步是否重复
+  3. 进度跟踪：判断是否向目标前进
+  4. 超时机制：单个任务最多 5 分钟
+
+  实现：
+  val recentStates = mutableListOf<String>()
+
+  fun detectLoop(currentState: String): Boolean {
+      val stateHash = currentState.hashCode().toString()
+      recentStates.add(stateHash)
+      if (recentStates.size > 5) recentStates.removeAt(0)
+
+      // 检测最近 5 步中是否有 3 次相同
+      val duplicateCount = recentStates.count { it == stateHash }
+      return duplicateCount >= 3
+  }
+
+  ---
+  5.5 权限与兼容性
+
+  问题：
+  - AccessibilityService 需要用户手动开启
+  - 不同 Android 版本 API 差异
+
+  解决方案：
+  1. 引导流程：首次启动时提供详细的权限开启教程
+  2. 版本适配：针对 Android 8/10/12/13 分别处理
+  3. 降级方案：部分功能在低版本上禁用
+  4. 权限检测：运行时检查权限状态，及时提示
+
+  兼容性矩阵：
+
+  ┌──────────────────────┬───────────┬────────────┬─────────────┐
+  │         功能         │ Android 8 │ Android 10 │ Android 12+ │
+  ├──────────────────────┼───────────┼────────────┼─────────────┤
+  │ AccessibilityService │ ✅        │ ✅         │ ✅          │
+  ├──────────────────────┼───────────┼────────────┼─────────────┤
+  │ MediaProjection      │ ✅        │ ✅         │ ✅          │
+  ├──────────────────────┼───────────┼────────────┼─────────────┤
+  │ 手势模拟             │ ❌        │ ✅         │ ✅          │
+  ├──────────────────────┼───────────┼────────────┼─────────────┤
+  │ 剪贴板访问           │ ✅        │ ✅         │ ⚠️ 受限     │
+  └──────────────────────┴───────────┴────────────┴─────────────┘
+
+  ---
+  六、预期性能指标
+
+  6.1 模型性能（小米14）
+
+  - 推理延迟：2-3 秒/截图
+  - 内存占用：3.5-4.5GB（峰值）
+  - 电池消耗：1-2% / 次签到任务
+  - 模型大小：2GB（Q4_K_M）
+
+  6.2 任务执行性能
+
+  - 简单任务（1-3 步）：成功率 > 90%，耗时 < 30 秒
+  - 中等任务（4-7 步）：成功率 > 80%，耗时 < 2 分钟
+  - 复杂任务（8+ 步）：成功率 > 70%，耗时 < 5 分钟
+
+  6.3 记忆系统效率
+
+  - 首次执行：探索模式，耗时较长
+  - 第二次执行：速度提升 50-70%
+  - 记忆命中率：> 60%（相同 App 内）
+
+  ---
+  七、风险与挑战
+
+  7.1 技术风险
+
+  1. 模型识别准确率不足
+  - 风险：复杂 UI、自定义控件识别失败
+  - 缓解：结合 AccessibilityService UI 树信息，多模态融合
+
+  2. 性能不达预期
+  - 风险：推理速度慢，用户体验差
+  - 缓解：NPU 加速、分辨率优化、异步处理
+
+  3. 兼容性问题
+  - 风险：部分设备/系统版本不支持
+  - 缓解：多设备测试、降级方案
+
+  7.2 产品风险
+
+  1. 用户学习成本
+  - 风险：权限设置复杂，用户放弃
+  - 缓解：详细引导教程、视频演示
+
+  2. 任务成功率低
+  - 风险：频繁失败导致用户流失
+  - 缓解：记忆系统提高成功率、失败原因分析
+
+  3. 隐私担忧
+  - 风险：用户担心截图泄露
+  - 缓解：强调本地运行、不联网、开源代码
