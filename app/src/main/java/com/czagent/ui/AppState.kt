@@ -17,7 +17,7 @@ import com.czagent.core.model.ScreenSnapshot
 import com.czagent.core.model.StepLog
 import com.czagent.core.model.StepLogStatus
 import com.czagent.core.model.StepType
-import com.czagent.core.model.TaskStep
+import com.czagent.core.model.SwipeDirection
 import com.czagent.core.safety.SafetyGuard
 import com.czagent.core.vision.RuleBasedVisionAnalyzer
 import com.czagent.android.scheduler.TaskScheduler
@@ -27,6 +27,8 @@ import com.czagent.data.ShortcutEntity
 import com.czagent.data.StepLogEntity
 import com.czagent.data.TaskRepository
 import com.czagent.runner.TaskRunner
+import com.czagent.ui.task.DraftStep
+import com.czagent.ui.task.TaskDraftBuilder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -49,7 +51,14 @@ class AppState(
     var taskName by mutableStateOf("")
     var taskDescription by mutableStateOf("")
     var targetPackage by mutableStateOf("")
-    var firstClickText by mutableStateOf("")
+    val draftSteps = mutableStateListOf<DraftStep>()
+    var newStepType by mutableStateOf("CLICK_TEXT")
+    var newStepText by mutableStateOf("")
+    var newStepTargetText by mutableStateOf("")
+    var newStepX by mutableStateOf("")
+    var newStepY by mutableStateOf("")
+    var newStepWaitMillis by mutableStateOf("1000")
+    var newStepSwipeDirection by mutableStateOf("UP")
     var shortcutEnabled by mutableStateOf(false)
     var shortcutLabel by mutableStateOf("")
     var dailyScheduleEnabled by mutableStateOf(false)
@@ -85,19 +94,12 @@ class AppState(
 
     fun saveDraftTask() {
         val now = System.currentTimeMillis()
-        val steps = buildList {
-            add(TaskStep(id = now, orderIndex = 0, type = StepType.OPEN_APP))
-            if (firstClickText.isNotBlank()) {
-                add(TaskStep(id = now + 1, orderIndex = 1, type = StepType.CLICK_TEXT, selectorText = firstClickText))
-            }
-            add(TaskStep(id = now + 2, orderIndex = size, type = StepType.COMPLETE))
-        }
-        val task = AutomationTask(
+        val task = TaskDraftBuilder.buildTask(
             id = now,
             name = taskName.ifBlank { "Untitled Task" },
             description = taskDescription,
-            targetPackage = targetPackage.ifBlank { null },
-            steps = steps,
+            targetPackage = targetPackage,
+            draftSteps = draftSteps.toList(),
         )
         val repository = taskRepository
         if (repository == null) {
@@ -125,11 +127,52 @@ class AppState(
         taskName = ""
         taskDescription = ""
         targetPackage = ""
-        firstClickText = ""
+        draftSteps.clear()
+        resetNewStepFields()
         shortcutEnabled = false
         shortcutLabel = ""
         dailyScheduleEnabled = false
         dailyScheduleTime = "08:30"
+    }
+
+    fun addDraftStep() {
+        val step = when (newStepType) {
+            "WAIT" -> DraftStep.Wait(newStepWaitMillis.toLongOrNull() ?: 1_000L)
+            "CLICK_TEXT" -> DraftStep.ClickText(newStepText)
+            "CLICK_COORDINATES" -> DraftStep.ClickCoordinates(
+                x = newStepX.toIntOrNull() ?: 0,
+                y = newStepY.toIntOrNull() ?: 0,
+            )
+            "INPUT_TEXT" -> DraftStep.InputText(
+                targetText = newStepTargetText.ifBlank { null },
+                inputText = newStepText,
+            )
+            "SWIPE" -> DraftStep.Swipe(SwipeDirection.valueOf(newStepSwipeDirection))
+            "BACK" -> DraftStep.Back
+            "SCREENSHOT" -> DraftStep.Screenshot
+            else -> DraftStep.ClickText(newStepText)
+        }
+        draftSteps += step
+        resetNewStepFields()
+    }
+
+    fun removeDraftStep(index: Int) {
+        if (index in draftSteps.indices) {
+            draftSteps.removeAt(index)
+        }
+    }
+
+    fun clearDraftSteps() {
+        draftSteps.clear()
+    }
+
+    private fun resetNewStepFields() {
+        newStepText = ""
+        newStepTargetText = ""
+        newStepX = ""
+        newStepY = ""
+        newStepWaitMillis = "1000"
+        newStepSwipeDirection = "UP"
     }
 
     fun markManualRun(task: AutomationTask) {
