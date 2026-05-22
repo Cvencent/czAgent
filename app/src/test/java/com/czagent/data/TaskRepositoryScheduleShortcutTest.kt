@@ -48,6 +48,11 @@ class TaskRepositoryScheduleShortcutTest {
             TaskWithSteps(task, steps.filter { it.taskId == task.id })
         }
 
+        override suspend fun getTaskWithSteps(taskId: Long): TaskWithSteps? {
+            val task = tasks.firstOrNull { it.id == taskId } ?: return null
+            return TaskWithSteps(task, steps.filter { it.taskId == taskId })
+        }
+
         override suspend fun upsertTask(task: TaskEntity): Long {
             tasks.removeAll { it.id == task.id }
             tasks += task

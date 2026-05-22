@@ -16,6 +16,10 @@ interface TaskDao {
     @Query("SELECT * FROM tasks ORDER BY updatedAt DESC")
     suspend fun listTasksWithSteps(): List<TaskWithSteps>
 
+    @Transaction
+    @Query("SELECT * FROM tasks WHERE id = :taskId LIMIT 1")
+    suspend fun getTaskWithSteps(taskId: Long): TaskWithSteps?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertTask(task: TaskEntity): Long
 

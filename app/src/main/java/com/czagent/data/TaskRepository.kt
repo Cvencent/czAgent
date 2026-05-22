@@ -8,6 +8,8 @@ class TaskRepository(
 ) {
     suspend fun listTasks(): List<AutomationTask> = taskDao.listTasksWithSteps().map { it.toDomain() }
 
+    suspend fun getTask(taskId: Long): AutomationTask? = taskDao.getTaskWithSteps(taskId)?.toDomain()
+
     suspend fun listShortcuts(): List<ShortcutEntity> = taskDao.listShortcuts()
 
     suspend fun listSchedules(): List<TaskScheduleEntity> = taskDao.listSchedules()

@@ -21,13 +21,12 @@ import com.czagent.core.model.TaskStep
 import com.czagent.core.safety.SafetyGuard
 import com.czagent.core.vision.RuleBasedVisionAnalyzer
 import com.czagent.android.scheduler.TaskScheduler
-import com.czagent.data.RoomRunLogger
 import com.czagent.data.RunDao
 import com.czagent.data.SaveTaskOptions
 import com.czagent.data.ShortcutEntity
 import com.czagent.data.StepLogEntity
 import com.czagent.data.TaskRepository
-import com.czagent.data.TaskRunEntity
+import com.czagent.runner.TaskRunner
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -147,31 +146,33 @@ class AppState(
         currentStatus = RunStatus.RUNNING
         val runSummary = RunSummary(task.name, RunStatus.RUNNING, startedAt, null)
         runs.add(0, runSummary)
-        val dao = runDao
         viewModelScope.launch {
-            val logger = if (dao != null) {
-                val runId = withContext(Dispatchers.IO) {
-                    dao.insertRun(TaskRunEntity(taskId = task.id, status = RunStatus.RUNNING.name, startedAt = startedAt, endedAt = null, failureReason = null))
-                }
-                RoomRunLogger(runId, dao)
+            val status = if (taskRepository != null && runDao != null) {
+                val runner = TaskRunner(
+                    taskLookup = { id -> taskRepository.getTask(id) },
+                    runDao = runDao,
+                    screenObserver = screenObserver,
+                    actionExecutor = actionExecutor,
+                )
+                withContext(Dispatchers.IO) { runner.runTask(task) }
             } else {
-                InMemoryRunLogger(logs) { status, reason ->
+                val logger = InMemoryRunLogger(logs) { status, reason ->
                     currentStatus = status
                     val index = runs.indexOf(runSummary)
                     if (index >= 0) runs[index] = runSummary.copy(status = status, failureReason = reason)
                 }
+                val engine = ExecutionEngine(
+                    observer = screenObserver,
+                    analyzer = RuleBasedVisionAnalyzer(),
+                    executor = actionExecutor,
+                    safetyGuard = SafetyGuard(),
+                    logger = logger,
+                )
+                withContext(Dispatchers.IO) { engine.run(task) }
             }
-            val engine = ExecutionEngine(
-                observer = screenObserver,
-                analyzer = RuleBasedVisionAnalyzer(),
-                executor = actionExecutor,
-                safetyGuard = SafetyGuard(),
-                logger = logger,
-            )
-            val status = withContext(Dispatchers.IO) { engine.run(task) }
             currentStatus = status
             val index = runs.indexOf(runSummary)
-            if (index >= 0) runs[index] = runSummary.copy(status = status, failureReason = (logger as? RoomRunLogger)?.finishedReason)
+            if (index >= 0) runs[index] = runSummary.copy(status = status)
             load()
         }
     }
