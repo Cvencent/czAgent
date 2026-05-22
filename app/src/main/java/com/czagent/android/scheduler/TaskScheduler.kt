@@ -18,16 +18,27 @@ class TaskScheduler(
     suspend fun rescheduleAll() {
         taskRepository.listSchedules().forEach { schedule ->
             if (schedule.type == "DAILY") {
-                val delay = ScheduleCalculator.delayUntilNextDailyRun(
-                    now = now(),
-                    localTime = LocalTime.parse(schedule.localTime),
-                )
-                workManager.enqueueUniqueWork(
-                    WorkRequestFactory.dailyWorkName(schedule.taskId),
-                    ExistingWorkPolicy.REPLACE,
-                    WorkRequestFactory.dailyTaskRequest(schedule.taskId, delay),
-                )
+                scheduleDaily(schedule.taskId, schedule.localTime)
             }
         }
+    }
+
+    suspend fun rescheduleDaily(taskId: Long) {
+        val schedule = taskRepository.listSchedules().firstOrNull {
+            it.taskId == taskId && it.type == ScheduledTaskCoordinator.SCHEDULE_TYPE_DAILY
+        } ?: return
+        scheduleDaily(taskId, schedule.localTime)
+    }
+
+    private fun scheduleDaily(taskId: Long, localTime: String) {
+        val delay = ScheduleCalculator.delayUntilNextDailyRun(
+            now = now(),
+            localTime = LocalTime.parse(localTime),
+        )
+        workManager.enqueueUniqueWork(
+            WorkRequestFactory.dailyWorkName(taskId),
+            ExistingWorkPolicy.REPLACE,
+            WorkRequestFactory.dailyTaskRequest(taskId, delay),
+        )
     }
 }

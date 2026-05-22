@@ -14,6 +14,7 @@ object WorkRequestFactory {
             .setInputData(
                 Data.Builder()
                     .putLong("taskId", taskId)
+                    .putString("scheduleType", ScheduledTaskCoordinator.SCHEDULE_TYPE_DAILY)
                     .build(),
             )
             .setInitialDelay(initialDelay.toMillis(), TimeUnit.MILLISECONDS)

@@ -15,6 +15,7 @@ class WorkRequestFactoryTest {
         val request = WorkRequestFactory.dailyTaskRequest(taskId = 42, initialDelay = Duration.ofMinutes(15))
 
         assertEquals(42, request.workSpec.input.getLong("taskId", -1))
+        assertEquals("DAILY", request.workSpec.input.getString("scheduleType"))
         assertEquals(15 * 60 * 1000L, request.workSpec.initialDelay)
     }
 }

@@ -16,6 +16,7 @@ class TaskRunWorker(
 ) : CoroutineWorker(appContext, params) {
     override suspend fun doWork(): Result {
         val taskId = inputData.getLong("taskId", -1L)
+        val scheduleType = inputData.getString("scheduleType")
         if (taskId <= 0) return Result.failure()
         val database = Room.databaseBuilder(
             applicationContext,
@@ -29,7 +30,14 @@ class TaskRunWorker(
             screenObserver = AndroidScreenObserver(),
             actionExecutor = AndroidActionExecutor(applicationContext),
         )
-        val status = runner.runTaskById(taskId)
-        return if (status == com.czagent.core.model.RunStatus.SUCCEEDED) Result.success() else Result.failure()
+        val scheduler = TaskScheduler(applicationContext, repository)
+        val coordinator = ScheduledTaskCoordinator(
+            runTask = { id -> runner.runTaskById(id) },
+            rescheduleDaily = { id -> scheduler.rescheduleDaily(id) },
+        )
+        return when (coordinator.runScheduledTask(taskId, scheduleType)) {
+            ScheduledTaskResult.SUCCESS -> Result.success()
+            ScheduledTaskResult.FAILURE -> Result.failure()
+        }
     }
 }
