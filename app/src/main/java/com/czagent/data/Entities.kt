@@ -20,6 +20,7 @@ data class TaskStepEntity(
     val taskId: Long,
     val orderIndex: Int,
     val type: String,
+    val label: String,
     val selectorText: String?,
     val x: Int?,
     val y: Int?,

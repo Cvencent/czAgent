@@ -4,11 +4,17 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
+import androidx.room.Update
 
 @Dao
 interface TaskDao {
     @Query("SELECT * FROM tasks ORDER BY updatedAt DESC")
     suspend fun listTasks(): List<TaskEntity>
+
+    @Transaction
+    @Query("SELECT * FROM tasks ORDER BY updatedAt DESC")
+    suspend fun listTasksWithSteps(): List<TaskWithSteps>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertTask(task: TaskEntity): Long
@@ -30,4 +36,13 @@ interface RunDao {
 
     @Query("SELECT * FROM task_runs ORDER BY startedAt DESC LIMIT :limit")
     suspend fun recentRuns(limit: Int = 50): List<TaskRunEntity>
+
+    @Query("SELECT * FROM step_logs ORDER BY timestamp ASC")
+    suspend fun listLogs(): List<StepLogEntity>
+
+    @Update
+    suspend fun updateRun(run: TaskRunEntity)
+
+    @Query("SELECT * FROM task_runs WHERE id = :runId LIMIT 1")
+    suspend fun getRun(runId: Long): TaskRunEntity?
 }

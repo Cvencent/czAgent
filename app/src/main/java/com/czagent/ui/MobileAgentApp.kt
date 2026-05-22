@@ -7,11 +7,13 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.czagent.ui.screens.ExecutionMonitorScreen
 import com.czagent.ui.screens.HistoryScreen
@@ -28,8 +30,12 @@ private enum class Tab(val label: String) {
 }
 
 @Composable
-fun MobileAgentApp(appState: AppState = viewModel()) {
+fun MobileAgentApp(factory: ViewModelProvider.Factory? = null) {
+    val appState: AppState = if (factory == null) viewModel() else viewModel(factory = factory)
     var selected by remember { mutableStateOf(Tab.HOME) }
+    LaunchedEffect(Unit) {
+        appState.load()
+    }
     MaterialTheme {
         Scaffold(
             bottomBar = {
