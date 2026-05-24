@@ -2,11 +2,19 @@ package com.czagent.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
@@ -28,36 +36,67 @@ import com.czagent.ui.task.DraftStep
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TaskEditorScreen(appState: AppState, modifier: Modifier = Modifier) {
-    Column(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    val scrollState = rememberScrollState()
+    Column(
+        modifier.fillMaxSize().verticalScroll(scrollState).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
         Text("Task Editor", style = androidx.compose.material3.MaterialTheme.typography.headlineMedium)
-        OutlinedTextField(appState.taskName, { appState.taskName = it }, Modifier.fillMaxWidth(), label = { Text("Task name") })
-        OutlinedTextField(appState.taskDescription, { appState.taskDescription = it }, Modifier.fillMaxWidth(), label = { Text("Natural language description") })
-        OutlinedTextField(appState.targetPackage, { appState.targetPackage = it }, Modifier.fillMaxWidth(), label = { Text("Target package") })
-        Text("Steps", style = androidx.compose.material3.MaterialTheme.typography.titleMedium)
-        appState.draftSteps.forEachIndexed { index, step ->
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("${index + 1}. ${step.describe()}")
-                Button(onClick = { appState.removeDraftStep(index) }) {
-                    Text("Remove")
+        Text("Build a task, then save it to keep it as a shortcut or daily schedule.")
+
+        EditorSection("Task details") {
+            OutlinedTextField(appState.taskName, { appState.taskName = it }, Modifier.fillMaxWidth(), label = { Text("Task name") })
+            OutlinedTextField(appState.taskDescription, { appState.taskDescription = it }, Modifier.fillMaxWidth(), label = { Text("Natural language description") })
+            OutlinedTextField(appState.targetPackage, { appState.targetPackage = it }, Modifier.fillMaxWidth(), label = { Text("Target package") })
+        }
+
+        EditorSection("Steps") {
+            if (appState.draftSteps.isEmpty()) {
+                Text("No steps yet. Add one below.")
+            } else {
+                appState.draftSteps.forEachIndexed { index, step ->
+                    Card(Modifier.fillMaxWidth()) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text("${index + 1}. ${step.describe()}")
+                            Button(onClick = { appState.removeDraftStep(index) }) {
+                                androidx.compose.material3.Icon(Icons.Default.Delete, null)
+                                Text("Remove")
+                            }
+                        }
+                    }
                 }
             }
         }
-        StepInput(appState)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("Shortcut command")
-            Switch(appState.shortcutEnabled, { appState.shortcutEnabled = it })
+
+        EditorSection("Add step") {
+            StepInput(appState)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { appState.addDraftStep() }) {
+                    androidx.compose.material3.Icon(Icons.Default.Add, null)
+                    Text("Add step")
+                }
+                Button(onClick = { appState.clearDraftSteps() }, enabled = appState.draftSteps.isNotEmpty()) {
+                    Text("Clear steps")
+                }
+            }
         }
-        if (appState.shortcutEnabled) {
-            OutlinedTextField(appState.shortcutLabel, { appState.shortcutLabel = it }, Modifier.fillMaxWidth(), label = { Text("Shortcut label") })
+
+        EditorSection("Save options") {
+            ToggleRow("Shortcut command", appState.shortcutEnabled, onToggle = { appState.shortcutEnabled = it })
+            if (appState.shortcutEnabled) {
+                OutlinedTextField(appState.shortcutLabel, { appState.shortcutLabel = it }, Modifier.fillMaxWidth(), label = { Text("Shortcut label") })
+            }
+            ToggleRow("Daily schedule", appState.dailyScheduleEnabled, onToggle = { appState.dailyScheduleEnabled = it })
+            if (appState.dailyScheduleEnabled) {
+                OutlinedTextField(appState.dailyScheduleTime, { appState.dailyScheduleTime = it }, Modifier.fillMaxWidth(), label = { Text("Daily time HH:mm") })
+            }
         }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("Daily schedule")
-            Switch(appState.dailyScheduleEnabled, { appState.dailyScheduleEnabled = it })
-        }
-        if (appState.dailyScheduleEnabled) {
-            OutlinedTextField(appState.dailyScheduleTime, { appState.dailyScheduleTime = it }, Modifier.fillMaxWidth(), label = { Text("Daily time HH:mm") })
-        }
+
         Button(onClick = { appState.saveDraftTask() }, enabled = appState.taskName.isNotBlank()) {
+            androidx.compose.material3.Icon(Icons.Default.Save, null)
             Text("Save task")
         }
     }
@@ -103,13 +142,23 @@ private fun StepInput(appState: AppState) {
         }
         "SWIPE" -> OutlinedTextField(appState.newStepSwipeDirection, { appState.newStepSwipeDirection = it.uppercase() }, Modifier.fillMaxWidth(), label = { Text("Direction UP/DOWN/LEFT/RIGHT") })
     }
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Button(onClick = { appState.addDraftStep() }) {
-            Text("Add step")
+}
+
+@Composable
+private fun EditorSection(title: String, content: @Composable ColumnScope.() -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(title, style = androidx.compose.material3.MaterialTheme.typography.titleMedium)
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp), content = content)
         }
-        Button(onClick = { appState.clearDraftSteps() }, enabled = appState.draftSteps.isNotEmpty()) {
-            Text("Clear")
-        }
+    }
+}
+
+@Composable
+private fun ToggleRow(label: String, value: Boolean, onToggle: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(label)
+        Switch(value, onToggle)
     }
 }
 

@@ -219,7 +219,9 @@ class AppState(
             }
             currentStatus = status
             val index = runs.indexOf(runSummary)
-            if (index >= 0) runs[index] = runSummary.copy(status = status)
+            if (index >= 0) {
+                runs[index] = runSummary.copy(status = status, failureReason = if (status == RunStatus.SUCCEEDED) null else runs[index].failureReason)
+            }
             load()
         }
     }

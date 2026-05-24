@@ -1,4 +1,6 @@
 .claude/settings.local.json
+.codegraph/
+.cursor/
 .gradle/
 .kotlin/
 .local/
