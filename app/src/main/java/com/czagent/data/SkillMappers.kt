@@ -4,6 +4,7 @@ import com.czagent.core.model.StepType
 import com.czagent.core.model.SwipeDirection
 import com.czagent.core.skill.*
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
@@ -166,3 +167,58 @@ fun Trigger.toSerializable(): SerializableTrigger = when (this) {
     is Trigger.DailySchedule -> SerializableTrigger.DailySchedule(localTime)
     is Trigger.NetworkChange -> SerializableTrigger.NetworkChange(ssid)
 }
+
+// JSON Import/Export
+fun Skill.toJson(): String {
+    val exportDto = SkillExportDto(
+        name = name,
+        description = description,
+        tags = tags,
+        version = 1,
+        parameters = parameters.map { SkillParameterExportDto(it.name, it.displayName, it.type.name, it.defaultValue, it.required) },
+        steps = steps.map { it.toSerializable() },
+        triggers = triggers.map { it.toSerializable() },
+    )
+    return json.encodeToString(exportDto)
+}
+
+fun Skill.Companion.fromJson(jsonString: String, id: String, clock: () -> Long = System::currentTimeMillis): Skill {
+    val dto = json.decodeFromString<SkillExportDto>(jsonString)
+    val params = dto.parameters.map { SkillParameter(it.name, it.displayName, ParamType.valueOf(it.type), it.defaultValue, it.required) }
+    val steps = dto.steps.map { it.toDomain() }
+    val triggers = dto.triggers.map { it.toDomain() }
+
+    return Skill(
+        id = id,
+        name = dto.name,
+        description = dto.description,
+        tags = dto.tags,
+        version = dto.version,
+        parameters = params,
+        steps = steps,
+        triggers = triggers,
+        enabled = true,
+        createdAt = clock(),
+        updatedAt = clock(),
+    )
+}
+
+@Serializable
+private data class SkillExportDto(
+    val name: String,
+    val description: String,
+    val tags: List<String>,
+    val version: Int,
+    val parameters: List<SkillParameterExportDto>,
+    val steps: List<SerializableSkillStep>,
+    val triggers: List<SerializableTrigger>,
+)
+
+@Serializable
+private data class SkillParameterExportDto(
+    val name: String,
+    val displayName: String,
+    val type: String,
+    val defaultValue: String?,
+    val required: Boolean,
+)
