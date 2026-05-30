@@ -1,6 +1,7 @@
 package com.czagent.data
 
 import androidx.room.Dao
+import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
@@ -67,4 +68,43 @@ interface RunDao {
 
     @Query("SELECT * FROM task_runs WHERE id = :runId LIMIT 1")
     suspend fun getRun(runId: Long): TaskRunEntity?
+}
+
+@Dao
+interface SkillDao {
+    @Query("SELECT * FROM skills ORDER BY updatedAt DESC")
+    suspend fun getAll(): List<SkillEntity>
+
+    @Query("SELECT * FROM skills WHERE id = :id")
+    suspend fun getById(id: String): SkillEntity?
+
+    @Query("SELECT * FROM skills WHERE enabled = 1 ORDER BY updatedAt DESC")
+    suspend fun getEnabled(): List<SkillEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(skill: SkillEntity)
+
+    @Update
+    suspend fun update(skill: SkillEntity)
+
+    @Delete
+    suspend fun delete(skill: SkillEntity)
+
+    @Query("DELETE FROM skills WHERE id = :id")
+    suspend fun deleteById(id: String)
+}
+
+@Dao
+interface SkillParameterDao {
+    @Query("SELECT * FROM skill_parameters WHERE skillId = :skillId")
+    suspend fun getBySkillId(skillId: String): List<SkillParameterEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(parameter: SkillParameterEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(parameters: List<SkillParameterEntity>)
+
+    @Query("DELETE FROM skill_parameters WHERE skillId = :skillId")
+    suspend fun deleteBySkillId(skillId: String)
 }
