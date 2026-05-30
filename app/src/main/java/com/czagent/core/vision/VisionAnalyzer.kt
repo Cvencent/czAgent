@@ -69,3 +69,11 @@ class RuleBasedVisionAnalyzer : VisionAnalyzer {
         }
     }
 }
+
+class LLMBasedVisionAnalyzer(
+    private val llm: com.czagent.core.skill.OnDeviceLLM,
+) : VisionAnalyzer {
+    override suspend fun analyze(screen: ScreenSnapshot, taskContext: TaskContext): AgentDecision {
+        return llm.decideAction(screen, taskContext)
+    }
+}
