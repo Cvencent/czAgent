@@ -11,11 +11,15 @@ import androidx.room.RoomDatabase
         ShortcutEntity::class,
         TaskRunEntity::class,
         StepLogEntity::class,
+        SkillEntity::class,
+        SkillParameterEntity::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun taskDao(): TaskDao
     abstract fun runDao(): RunDao
+    abstract fun skillDao(): SkillDao
+    abstract fun skillParameterDao(): SkillParameterDao
 }
