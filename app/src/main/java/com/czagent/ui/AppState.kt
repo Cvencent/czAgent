@@ -19,12 +19,15 @@ import com.czagent.core.model.StepLogStatus
 import com.czagent.core.model.StepType
 import com.czagent.core.model.SwipeDirection
 import com.czagent.core.safety.SafetyGuard
+import com.czagent.core.skill.Skill
+import com.czagent.core.skill.SkillResolver
 import com.czagent.core.vision.RuleBasedVisionAnalyzer
 import com.czagent.android.permissions.AndroidPermissionChecker
 import com.czagent.android.scheduler.TaskScheduler
 import com.czagent.data.RunDao
 import com.czagent.data.SaveTaskOptions
 import com.czagent.data.ShortcutEntity
+import com.czagent.data.SkillRepository
 import com.czagent.data.StepLogEntity
 import com.czagent.data.TaskRepository
 import com.czagent.runner.TaskRunPreflight
@@ -42,11 +45,14 @@ class AppState(
     private val actionExecutor: ActionExecutor = NoOpActionExecutor,
     private val taskScheduler: TaskScheduler? = null,
     private val permissionChecker: AndroidPermissionChecker? = null,
+    private val skillRepository: SkillRepository? = null,
 ) : ViewModel() {
     val tasks = mutableStateListOf<AutomationTask>()
     val shortcuts = mutableStateListOf<ShortcutCommand>()
     val logs = mutableStateListOf<StepLog>()
     val runs = mutableStateListOf<RunSummary>()
+    val skills = mutableStateListOf<Skill>()
+    private val skillResolver = SkillResolver()
 
     var currentStatus by mutableStateOf<RunStatus?>(null)
         private set
@@ -68,31 +74,83 @@ class AppState(
     var dailyScheduleTime by mutableStateOf("08:30")
 
     fun load() {
-        val repository = taskRepository ?: return
         viewModelScope.launch {
-            val loadedTasks = withContext(Dispatchers.IO) { repository.listTasks() }
-            tasks.clear()
-            tasks.addAll(loadedTasks)
-            val namesById = loadedTasks.associate { it.id to it.name }
-            val loadedShortcuts = withContext(Dispatchers.IO) { repository.listShortcuts() }
-            shortcuts.clear()
-            shortcuts.addAll(loadedShortcuts.map { it.toCommand(loadedTasks) })
-            val loadedRuns = withContext(Dispatchers.IO) { runDao?.recentRuns() ?: emptyList() }
-            runs.clear()
-            runs.addAll(
-                loadedRuns.map {
-                    RunSummary(
-                        taskName = namesById[it.taskId] ?: "Task ${it.taskId}",
-                        status = RunStatus.valueOf(it.status),
-                        startedAt = it.startedAt,
-                        failureReason = it.failureReason,
-                    )
-                },
-            )
-            val loadedLogs = withContext(Dispatchers.IO) { runDao?.listLogs() ?: emptyList() }
-            logs.clear()
-            logs.addAll(loadedLogs.map { it.toDomainLog() })
+            // 加载任务
+            val repository = taskRepository
+            if (repository != null) {
+                val loadedTasks = withContext(Dispatchers.IO) { repository.listTasks() }
+                tasks.clear()
+                tasks.addAll(loadedTasks)
+                val namesById = loadedTasks.associate { it.id to it.name }
+                val loadedShortcuts = withContext(Dispatchers.IO) { repository.listShortcuts() }
+                shortcuts.clear()
+                shortcuts.addAll(loadedShortcuts.map { it.toCommand(loadedTasks) })
+                val loadedRuns = withContext(Dispatchers.IO) { runDao?.recentRuns() ?: emptyList() }
+                runs.clear()
+                runs.addAll(
+                    loadedRuns.map {
+                        RunSummary(
+                            taskName = namesById[it.taskId] ?: "Task ${it.taskId}",
+                            status = RunStatus.valueOf(it.status),
+                            startedAt = it.startedAt,
+                            failureReason = it.failureReason,
+                        )
+                    },
+                )
+                val loadedLogs = withContext(Dispatchers.IO) { runDao?.listLogs() ?: emptyList() }
+                logs.clear()
+                logs.addAll(loadedLogs.map { it.toDomainLog() })
+            }
+            
+            // 加载技能
+            val skillRepo = skillRepository
+            if (skillRepo != null) {
+                val loadedSkills = withContext(Dispatchers.IO) { skillRepo.getAll() }
+                skills.clear()
+                skills.addAll(loadedSkills)
+            }
         }
+    }
+
+    fun saveSkill(skill: Skill) {
+        viewModelScope.launch {
+            val repo = skillRepository
+            if (repo != null) {
+                withContext(Dispatchers.IO) { repo.save(skill) }
+                load()
+            } else {
+                // 内存模式：更新或添加
+                val index = skills.indexOfFirst { it.id == skill.id }
+                if (index >= 0) {
+                    skills[index] = skill
+                } else {
+                    skills.add(skill)
+                }
+            }
+        }
+    }
+
+    fun deleteSkill(skillId: String) {
+        viewModelScope.launch {
+            val repo = skillRepository
+            if (repo != null) {
+                withContext(Dispatchers.IO) { repo.delete(skillId) }
+                load()
+            } else {
+                skills.removeAll { it.id == skillId }
+            }
+        }
+    }
+
+    fun toggleSkill(skill: Skill, enabled: Boolean) {
+        val updatedSkill = skill.copy(enabled = enabled)
+        saveSkill(updatedSkill)
+    }
+
+    fun runSkill(skill: Skill) {
+        // 使用 SkillResolver 将技能转换为任务，然后运行
+        val task = skillResolver.resolve(skill, emptyMap())
+        runTask(task)
     }
 
     fun saveDraftTask() {

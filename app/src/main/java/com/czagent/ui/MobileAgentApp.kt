@@ -3,6 +3,7 @@ package com.czagent.ui
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.automirrored.filled.ListAlt
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Monitor
@@ -26,10 +27,13 @@ import com.czagent.ui.screens.ExecutionMonitorScreen
 import com.czagent.ui.screens.HistoryScreen
 import com.czagent.ui.screens.HomeScreen
 import com.czagent.ui.screens.SettingsScreen
+import com.czagent.ui.screens.SkillEditorScreen
+import com.czagent.ui.screens.SkillListScreen
 import com.czagent.ui.screens.TaskEditorScreen
 
 private enum class Tab(val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
     HOME("Home", Icons.Default.Dashboard),
+    SKILLS("Skills", Icons.Default.AutoAwesome),
     TASKS("Tasks", Icons.AutoMirrored.Filled.ListAlt),
     MONITOR("Monitor", Icons.Default.Monitor),
     HISTORY("History", Icons.Default.History),
@@ -40,31 +44,72 @@ private enum class Tab(val label: String, val icon: androidx.compose.ui.graphics
 fun MobileAgentApp(factory: ViewModelProvider.Factory? = null) {
     val appState: AppState = if (factory == null) viewModel() else viewModel(factory = factory)
     var selected by remember { mutableStateOf(Tab.HOME) }
+    var showSkillEditor by remember { mutableStateOf(false) }
+    var editingSkill by remember { mutableStateOf<com.czagent.core.skill.Skill?>(null) }
+    
     LaunchedEffect(Unit) {
         appState.load()
     }
-    MaterialTheme {
-        Scaffold(
-            bottomBar = {
-                NavigationBar {
-                    Tab.entries.forEach { tab ->
-                        NavigationBarItem(
-                            selected = selected == tab,
-                            onClick = { selected = tab },
-                            label = { Text(tab.label) },
-                            icon = { Icon(tab.icon, contentDescription = tab.label) },
-                        )
-                    }
-                }
+    
+    if (showSkillEditor) {
+        SkillEditorScreen(
+            initialSkill = editingSkill,
+            onSave = { skill ->
+                appState.saveSkill(skill)
+                showSkillEditor = false
+                editingSkill = null
             },
-        ) { padding ->
-            val modifier = Modifier.padding(padding)
-            when (selected) {
-                Tab.HOME -> HomeScreen(appState, modifier)
-                Tab.TASKS -> TaskEditorScreen(appState, modifier)
-                Tab.MONITOR -> ExecutionMonitorScreen(appState, modifier)
-                Tab.HISTORY -> HistoryScreen(appState, modifier)
-                Tab.SETTINGS -> SettingsScreen(modifier)
+            onDelete = { id ->
+                appState.deleteSkill(id)
+                showSkillEditor = false
+                editingSkill = null
+            },
+            onExport = { /* 待实现 */ },
+            onImport = { /* 待实现 */ },
+            onBack = {
+                showSkillEditor = false
+                editingSkill = null
+            },
+        )
+    } else {
+        MaterialTheme {
+            Scaffold(
+                bottomBar = {
+                    NavigationBar {
+                        Tab.entries.forEach { tab ->
+                            NavigationBarItem(
+                                selected = selected == tab,
+                                onClick = { selected = tab },
+                                label = { Text(tab.label) },
+                                icon = { Icon(tab.icon, contentDescription = tab.label) },
+                            )
+                        }
+                    }
+                },
+            ) { padding ->
+                val modifier = Modifier.padding(padding)
+                when (selected) {
+                    Tab.HOME -> HomeScreen(appState, modifier)
+                    Tab.SKILLS -> SkillListScreen(
+                        skills = appState.skills,
+                        onAddSkill = {
+                            editingSkill = null
+                            showSkillEditor = true
+                        },
+                        onEditSkill = { skill ->
+                            editingSkill = skill
+                            showSkillEditor = true
+                        },
+                        onRunSkill = { skill -> appState.runSkill(skill) },
+                        onToggleSkill = { skill, enabled -> appState.toggleSkill(skill, enabled) },
+                        onImportSkill = { /* 待实现 */ },
+                        modifier = modifier,
+                    )
+                    Tab.TASKS -> TaskEditorScreen(appState, modifier)
+                    Tab.MONITOR -> ExecutionMonitorScreen(appState, modifier)
+                    Tab.HISTORY -> HistoryScreen(appState, modifier)
+                    Tab.SETTINGS -> SettingsScreen(modifier)
+                }
             }
         }
     }
