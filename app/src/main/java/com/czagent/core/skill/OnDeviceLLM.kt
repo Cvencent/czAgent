@@ -1,9 +1,9 @@
 package com.czagent.core.skill
 
 import com.czagent.core.model.AgentAction
-import com.czagent.core.model.AgentDecision
 import com.czagent.core.model.ScreenSnapshot
 import com.czagent.core.model.TaskContext
+import com.czagent.core.vision.AgentDecision
 
 interface OnDeviceLLM {
     suspend fun understandIntent(

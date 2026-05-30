@@ -15,7 +15,9 @@ data class Skill(
     val enabled: Boolean,
     val createdAt: Long,
     val updatedAt: Long,
-)
+) {
+    companion object
+}
 
 data class SkillParameter(
     val name: String,
@@ -56,4 +58,6 @@ data class SkillMatch(
     val skill: Skill,
     val confidence: Float,
     val extractedParams: Map<String, String>,
-)
+) {
+    companion object
+}

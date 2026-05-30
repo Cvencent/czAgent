@@ -2,7 +2,7 @@ package com.czagent.core.skill
 
 import com.czagent.core.model.AutomationTask
 import com.czagent.core.model.TaskStep
-import java.util.UUID
+import kotlin.math.abs
 
 class SkillResolver {
     fun resolve(
@@ -18,13 +18,13 @@ class SkillResolver {
         }
 
         // Create task with proper ID, adding OPEN_APP and COMPLETE like TaskDraftBuilder
-        val taskId = UUID.randomUUID().toString()
+        val taskId = abs(skill.hashCode().toLong())
         val allSteps = buildList {
             // Find target package from skill (or first OPEN_APP step?)
             // For now, use a placeholder; we can improve later
             add(
                 TaskStep(
-                    id = taskId + "_open",
+                    id = taskId + 1,
                     orderIndex = 0,
                     type = com.czagent.core.model.StepType.OPEN_APP,
                     label = "Open app",
@@ -32,12 +32,12 @@ class SkillResolver {
             )
             addAll(
                 resolvedSteps.mapIndexed { i, step ->
-                    step.copy(id = "${taskId}_step_$i", orderIndex = i + 1)
+                    step.copy(id = taskId + 2 + i, orderIndex = i + 1)
                 }
             )
             add(
                 TaskStep(
-                    id = taskId + "_complete",
+                    id = taskId + 2 + resolvedSteps.size,
                     orderIndex = resolvedSteps.size + 1,
                     type = com.czagent.core.model.StepType.COMPLETE,
                     label = "Complete",
@@ -73,7 +73,7 @@ class SkillResolver {
         }
 
         return TaskStep(
-            id = "", // Will be set later
+            id = 0L, // Will be set later
             orderIndex = step.orderIndex,
             type = step.type,
             label = resolve(step.label) ?: step.label,

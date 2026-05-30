@@ -1,11 +1,13 @@
 package com.czagent.ui.screens
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
@@ -119,6 +121,7 @@ fun SkillEditorScreen(
             itemsIndexed(parameters) { index, param ->
                 SkillParameterItem(
                     parameter = param,
+                    index = index,
                     onUpdate = { updatedParam ->
                         parameters = parameters.toMutableList().also { list ->
                             list[index] = updatedParam
@@ -285,6 +288,7 @@ private fun TagsEditor(
 @Composable
 private fun SkillParameterItem(
     parameter: SkillParameter,
+    index: Int,
     onUpdate: (SkillParameter) -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
@@ -296,7 +300,7 @@ private fun SkillParameterItem(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("参数 #${parameters.indexOf(parameter) + 1}", style = MaterialTheme.typography.titleSmall)
+                Text("参数 #${index + 1}", style = MaterialTheme.typography.titleSmall)
                 IconButton(onClick = onDelete) {
                     Icon(
                         Icons.Default.Delete,
@@ -423,7 +427,7 @@ private fun SkillStepItem(
                 }
                 IconButton(onClick = { expanded = !expanded }) {
                     Icon(
-                        androidx.compose.material.icons.Icons.AutoMirrored.Filled.Edit,
+                        Icons.Default.Edit,
                         contentDescription = if (expanded) "收起编辑" else "编辑步骤",
                     )
                 }
@@ -834,6 +838,7 @@ private fun TriggerToggle(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun WrapFlow(
     modifier: Modifier = Modifier,
