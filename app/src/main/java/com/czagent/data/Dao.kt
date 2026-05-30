@@ -108,3 +108,27 @@ interface SkillParameterDao {
     @Query("DELETE FROM skill_parameters WHERE skillId = :skillId")
     suspend fun deleteBySkillId(skillId: String)
 }
+
+@Dao
+interface SkillRunDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(run: SkillRunEntity): Long
+
+    @Update
+    suspend fun update(run: SkillRunEntity)
+
+    @Query("SELECT * FROM skill_runs ORDER BY startedAt DESC LIMIT :limit")
+    suspend fun recentRuns(limit: Int = 50): List<SkillRunEntity>
+
+    @Query("SELECT * FROM skill_runs WHERE skillId = :skillId ORDER BY startedAt DESC LIMIT :limit")
+    suspend fun runsBySkillId(skillId: String, limit: Int = 50): List<SkillRunEntity>
+
+    @Query("SELECT * FROM skill_runs WHERE id = :runId LIMIT 1")
+    suspend fun getById(runId: Long): SkillRunEntity?
+
+    @Query("DELETE FROM skill_runs WHERE id = :runId")
+    suspend fun deleteById(runId: Long)
+
+    @Query("DELETE FROM skill_runs WHERE skillId = :skillId")
+    suspend fun deleteBySkillId(skillId: String)
+}

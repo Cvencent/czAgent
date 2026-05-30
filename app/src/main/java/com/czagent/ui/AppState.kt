@@ -28,6 +28,8 @@ import com.czagent.data.RunDao
 import com.czagent.data.SaveTaskOptions
 import com.czagent.data.ShortcutEntity
 import com.czagent.data.SkillRepository
+import com.czagent.data.SkillRunDao
+import com.czagent.data.SkillRunEntity
 import com.czagent.data.StepLogEntity
 import com.czagent.data.TaskRepository
 import com.czagent.runner.TaskRunPreflight
@@ -46,12 +48,14 @@ class AppState(
     private val taskScheduler: TaskScheduler? = null,
     private val permissionChecker: AndroidPermissionChecker? = null,
     private val skillRepository: SkillRepository? = null,
+    private val skillRunDao: SkillRunDao? = null,
 ) : ViewModel() {
     val tasks = mutableStateListOf<AutomationTask>()
     val shortcuts = mutableStateListOf<ShortcutCommand>()
     val logs = mutableStateListOf<StepLog>()
     val runs = mutableStateListOf<RunSummary>()
     val skills = mutableStateListOf<Skill>()
+    val skillRuns = mutableStateListOf<SkillRunSummary>()
     private val skillResolver = SkillResolver()
 
     var currentStatus by mutableStateOf<RunStatus?>(null)
@@ -109,6 +113,24 @@ class AppState(
                 skills.clear()
                 skills.addAll(loadedSkills)
             }
+
+            // 加载技能运行历史
+            val skillRunDaoRef = skillRunDao
+            if (skillRunDaoRef != null) {
+                val loadedSkillRuns = withContext(Dispatchers.IO) { skillRunDaoRef.recentRuns() }
+                skillRuns.clear()
+                skillRuns.addAll(loadedSkillRuns.map {
+                    SkillRunSummary(
+                        runId = it.id,
+                        skillId = it.skillId,
+                        skillName = it.skillName,
+                        status = RunStatus.valueOf(it.status),
+                        startedAt = it.startedAt,
+                        endedAt = it.endedAt,
+                        failureReason = it.failureReason,
+                    )
+                })
+            }
         }
     }
 
@@ -147,10 +169,107 @@ class AppState(
         saveSkill(updatedSkill)
     }
 
+    fun deleteSkillRun(runId: Long) {
+        viewModelScope.launch {
+            val dao = skillRunDao
+            if (dao != null) {
+                withContext(Dispatchers.IO) { dao.deleteById(runId) }
+            }
+            skillRuns.removeAll { it.runId == runId }
+        }
+    }
+
+    fun clearSkillRunHistory() {
+        viewModelScope.launch {
+            skillRuns.clear()
+        }
+    }
+
     fun runSkill(skill: Skill) {
-        // 使用 SkillResolver 将技能转换为任务，然后运行
-        val task = skillResolver.resolve(skill, emptyMap())
-        runTask(task)
+        viewModelScope.launch {
+            val startedAt = System.currentTimeMillis()
+            var runId = 0L
+            val dao = skillRunDao
+            if (dao != null) {
+                runId = withContext(Dispatchers.IO) {
+                    dao.insert(
+                        SkillRunEntity(
+                            skillId = skill.id,
+                            skillName = skill.name,
+                            status = RunStatus.RUNNING.name,
+                            startedAt = startedAt,
+                            endedAt = null,
+                            failureReason = null,
+                            paramsJson = null,
+                        )
+                    )
+                }
+            }
+            val runSummary = SkillRunSummary(
+                runId = runId,
+                skillId = skill.id,
+                skillName = skill.name,
+                status = RunStatus.RUNNING,
+                startedAt = startedAt,
+                endedAt = null,
+                failureReason = null,
+            )
+            skillRuns.add(0, runSummary)
+
+            val task = skillResolver.resolve(skill, emptyMap())
+            val status = if (taskRepository != null && runDao != null) {
+                val runner = TaskRunner(
+                    taskLookup = { id -> taskRepository.getTask(id) },
+                    runDao = runDao,
+                    screenObserver = screenObserver,
+                    actionExecutor = actionExecutor,
+                    preflightCheck = { preflightCheck() },
+                )
+                withContext(Dispatchers.IO) { runner.runTask(task) }
+            } else {
+                val logger = InMemoryRunLogger(logs) { s, reason ->
+                    currentStatus = s
+                    val idx = skillRuns.indexOf(runSummary)
+                    if (idx >= 0) skillRuns[idx] = runSummary.copy(status = s, failureReason = reason)
+                }
+                val engine = ExecutionEngine(
+                    observer = screenObserver,
+                    analyzer = RuleBasedVisionAnalyzer(),
+                    executor = actionExecutor,
+                    safetyGuard = SafetyGuard(),
+                    logger = logger,
+                )
+                withContext(Dispatchers.IO) { engine.run(task) }
+            }
+
+            val endedAt = System.currentTimeMillis()
+            if (dao != null && runId > 0) {
+                withContext(Dispatchers.IO) {
+                    dao.update(
+                        SkillRunEntity(
+                            id = runId,
+                            skillId = skill.id,
+                            skillName = skill.name,
+                            status = status.name,
+                            startedAt = startedAt,
+                            endedAt = endedAt,
+                            failureReason = if (status != RunStatus.SUCCEEDED) "执行完成: ${status.name}" else null,
+                            paramsJson = null,
+                        )
+                    )
+                }
+            }
+            val idx = skillRuns.indexOf(runSummary)
+            if (idx >= 0) {
+                skillRuns[idx] = runSummary.copy(
+                    status = status,
+                    endedAt = endedAt,
+                    failureReason = if (status != RunStatus.SUCCEEDED) "执行完成: ${status.name}" else null,
+                )
+            }
+            currentStatus = status
+            load()
+        }
     }
 
     fun saveDraftTask() {
@@ -298,6 +417,16 @@ data class RunSummary(
     val taskName: String,
     val status: RunStatus,
     val startedAt: Long,
+    val failureReason: String?,
+)
+
+data class SkillRunSummary(
+    val runId: Long,
+    val skillId: String,
+    val skillName: String,
+    val status: RunStatus,
+    val startedAt: Long,
+    val endedAt: Long?,
     val failureReason: String?,
 )
 

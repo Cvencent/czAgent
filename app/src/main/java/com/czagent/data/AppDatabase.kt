@@ -13,8 +13,9 @@ import androidx.room.RoomDatabase
         StepLogEntity::class,
         SkillEntity::class,
         SkillParameterEntity::class,
+        SkillRunEntity::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -22,4 +23,5 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun runDao(): RunDao
     abstract fun skillDao(): SkillDao
     abstract fun skillParameterDao(): SkillParameterDao
+    abstract fun skillRunDao(): SkillRunDao
 }

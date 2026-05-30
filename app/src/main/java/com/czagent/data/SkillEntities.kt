@@ -27,3 +27,15 @@ data class SkillParameterEntity(
     val defaultValue: String?,
     val required: Boolean,
 )
+
+@Entity(tableName = "skill_runs")
+data class SkillRunEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val skillId: String,
+    val skillName: String,
+    val status: String,
+    val startedAt: Long,
+    val endedAt: Long?,
+    val failureReason: String?,
+    val paramsJson: String?,
+)

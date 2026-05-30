@@ -10,6 +10,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.ArrowDropUp
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -158,13 +160,33 @@ fun SkillEditorScreen(
             itemsIndexed(steps) { index, step ->
                 SkillStepItem(
                     step = step,
+                    isFirst = index == 0,
+                    isLast = index == steps.lastIndex,
                     onUpdate = { updatedStep ->
                         steps = steps.toMutableList().also { list ->
                             list[index] = updatedStep
                         }
                     },
                     onDelete = {
-                        steps = steps.filterIndexed { i, _ -> i != index }
+                        steps = steps.filterIndexed { i, _ -> i != index }.mapIndexed { i, s ->
+                            s.copy(orderIndex = i)
+                        }
+                    },
+                    onMoveUp = {
+                        if (index > 0) {
+                            steps = steps.toMutableList().also { list ->
+                                val item = list.removeAt(index)
+                                list.add(index - 1, item)
+                            }.mapIndexed { i, s -> s.copy(orderIndex = i) }
+                        }
+                    },
+                    onMoveDown = {
+                        if (index < steps.lastIndex) {
+                            steps = steps.toMutableList().also { list ->
+                                val item = list.removeAt(index)
+                                list.add(index + 1, item)
+                            }.mapIndexed { i, s -> s.copy(orderIndex = i) }
+                        }
                     },
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                 )
@@ -395,8 +417,12 @@ private fun ParamTypeSelector(
 @Composable
 private fun SkillStepItem(
     step: SkillStep,
+    isFirst: Boolean,
+    isLast: Boolean,
     onUpdate: (SkillStep) -> Unit,
     onDelete: () -> Unit,
+    onMoveUp: () -> Unit,
+    onMoveDown: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -407,13 +433,40 @@ private fun SkillStepItem(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(12.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    text = "${step.orderIndex + 1}.",
-                    style = MaterialTheme.typography.titleSmall,
-                )
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(end = 4.dp),
+                ) {
+                    IconButton(
+                        onClick = onMoveUp,
+                        enabled = !isFirst,
+                        modifier = Modifier.size(24.dp),
+                    ) {
+                        Icon(
+                            Icons.Default.ArrowDropUp,
+                            contentDescription = "上移",
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                    Text(
+                        text = "${step.orderIndex + 1}",
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                    IconButton(
+                        onClick = onMoveDown,
+                        enabled = !isLast,
+                        modifier = Modifier.size(24.dp),
+                    ) {
+                        Icon(
+                            Icons.Default.ArrowDropDown,
+                            contentDescription = "下移",
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                }
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = step.label,
